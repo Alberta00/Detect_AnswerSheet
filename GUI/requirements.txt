@@ -1,0 +1,5 @@
+PySide6
+pillow
+pymupdf
+opencv-python
+numpy==1.26.4
