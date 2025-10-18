@@ -227,40 +227,82 @@ class MainWindow(QMainWindow):
 
     # ---------- โหลด Template ----------
     def load_grid_list(self, auto_load=False):
-        folder = "grids"
+        # ใช้ path ของไฟล์โปรแกรมเป็นฐานเสมอ
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        folder = os.path.join(base_dir, "grids")
+
         os.makedirs(folder, exist_ok=True)
         json_files = [f for f in os.listdir(folder) if f.endswith(".json")]
+
         self.grid_combo.clear()
         if not json_files:
             self.grid_combo.addItem("(ไม่มี Template ในโฟลเดอร์ grids)")
             return
+
         self.grid_combo.addItems(json_files)
+
         if auto_load:
-            self.load_template(os.path.join(folder, json_files[0]))
+            first_path = os.path.join(folder, json_files[0])
+            self.load_template(first_path)
+
 
     def change_template(self):
         selected = self.grid_combo.currentText()
-        if selected and not selected.startswith("("):
-            self.load_template(os.path.join("grids", selected))
+        if not selected or selected.startswith("("):
+            return
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(base_dir, "grids", selected)
+        self.load_template(file_path)
+
 
     def load_template(self, file):
+        # ✅ ตรวจสอบและแปลง path ให้เป็น absolute เสมอ
+        if not os.path.isabs(file):
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            file = os.path.join(base_dir, file)
+        file = os.path.normpath(file)
+
+        if not os.path.exists(file):
+            QMessageBox.warning(self, "Error", f"❌ หาไฟล์ Template ไม่เจอ:\n{file}")
+            return
+
         try:
             with open(file, "r", encoding="utf-8") as f:
                 content = json.load(f)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"อ่าน Template ไม่ได้:\n{e}")
             return
+
+        # ✅ โหลดข้อมูล grids และรูปภาพ
         if isinstance(content, dict) and "grids" in content:
             self.grids = content["grids"]
             img_path = content.get("image_path", None)
             self.template_loaded = True
+
+            # 🔍 ถ้า image_path เป็น relative (ไม่มี :\ หรือ /home) → ให้ต่อ path กับที่อยู่ JSON
+            if img_path:
+                # ✅ ถ้า path จาก JSON มีคำว่า "grids" อยู่แล้ว → แสดงว่าเป็น path สมบูรณ์ภายในโปรเจกต์
+                if not os.path.isabs(img_path):
+                    if "grids" in img_path.lower():
+                        base_dir = os.path.dirname(os.path.abspath(__file__))
+                        img_path = os.path.join(base_dir, img_path)
+                    else:
+                        img_path = os.path.join(os.path.dirname(file), img_path)
+                img_path = os.path.normpath(img_path)
+
+            # ✅ ตรวจสอบว่ารูปมีจริงไหม
             if img_path and os.path.exists(img_path):
                 self.show_grid_preview(img_path, draw_boxes=True)
                 self.lbl_status.setText(f"✅ โหลด Template แล้ว: {os.path.basename(file)}")
             else:
-                self.lbl_status.setText("⚠️ Template ไม่มีภาพ Preview")
+                QMessageBox.warning(
+                    self, "Image Missing",
+                    f"⚠️ Template โหลดได้แต่ไม่พบภาพ Preview:\n{img_path}"
+                )
+                self.lbl_status.setText("⚠️ Template ไม่มีภาพ Preview หรือหาไฟล์ไม่เจอ")
         else:
             QMessageBox.warning(self, "Error", "Template ไม่ถูกต้อง")
+
 
     # ---------- แสดง Grid ----------
     def show_grid_preview(self, image_path, draw_boxes=True):

@@ -1,6 +1,6 @@
 {
-  "template_path": "C:/ImagePJ/grids/Girds.json",
-  "image_path": "C:/ImagePJ/grids/Girds_preview.jpg",
+  "template_path": "grids\\Girds.json",
+  "image_path": "grids\\Girds_preview.jpg",
   "grids": [
     {
       "block": "Answer",

@@ -307,7 +307,6 @@ class MainWindow(QMainWindow):
         self.scroll.setWidget(self.label)
 
         # ✅ ใช้ layout แบบ Stretch เต็มหน้าจอ
-                # ✅ ใช้ layout แบบ Stretch เต็มหน้าจอ
         central = QWidget()
         vbox = QVBoxLayout(central)
         vbox.setContentsMargins(0, 0, 0, 0)
@@ -392,19 +391,22 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "กรุณาเปิดภาพก่อนบันทึก")
             return
 
-        # reset counter เมื่อเซฟใหม่ทุกครั้ง (เฉพาะไว้ใช้ตั้งชื่อช่อง AnswerX… ต่อเนื่องภายในเซสชัน)
         self.label.answer_count = 0
 
-        folder = "grids"
+        # ✅ ใช้ path ตามไฟล์โปรแกรมเสมอ
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        folder = os.path.join(base_dir, "grids")
         os.makedirs(folder, exist_ok=True)
+
         filename, _ = QFileDialog.getSaveFileName(
-            self, "บันทึก Template", os.path.join(folder, "new_grid.json"),
+            self, "บันทึก Template",
+            os.path.join(folder, "new_grid.json"),
             "JSON (*.json)"
         )
         if not filename:
             return
 
-        # ลบไฟล์เก่าก่อนถ้ามี
+        # ลบไฟล์เก่า
         if os.path.exists(filename):
             try:
                 os.remove(filename)
@@ -412,7 +414,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "ลบไฟล์เก่าไม่สำเร็จ", f"ไม่สามารถลบไฟล์เก่าได้:\n{e}")
                 return
 
-        # เตรียมข้อมูลช่องทั้งหมด (Answer_* → Answer)
+        # ✅ เตรียมกริด
         data = []
         for r, n, b in self.label.rects:
             block_name = "Answer" if str(b).lower().startswith("answer_") else b
@@ -423,11 +425,10 @@ class MainWindow(QMainWindow):
                 "w": r.width(), "h": r.height()
             })
 
-        # สร้างภาพ Preview
+        # ✅ สร้าง preview
         preview_path = os.path.splitext(filename)[0] + "_preview.jpg"
         try:
             img = self.original_image.copy()
-            # วาดกรอบทั้งหมดบนภาพต้นฉบับ (พิกัดเป็นสเกล 1:1)
             for cell in data:
                 x, y, w, h = cell["x"], cell["y"], cell["w"], cell["h"]
                 block = cell["block"]
@@ -435,41 +436,31 @@ class MainWindow(QMainWindow):
                 cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
                 cv2.putText(img, cell["name"], (x, y - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
-
             if os.path.exists(preview_path):
                 os.remove(preview_path)
             cv2.imwrite(preview_path, img)
-
-            # ย่อภาพแสดงไม่ให้เต็มจอ
-            disp = img.copy()
-            max_w, max_h = 1000, 700
-            ih, iw = disp.shape[:2]
-            s = min(max_w / iw, max_h / ih, 1.0)
-            if s < 1.0:
-                disp = cv2.resize(disp, (int(iw * s), int(ih * s)), interpolation=cv2.INTER_AREA)
-
-            cv2.imshow("Template Preview", disp)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-
         except Exception as e:
             QMessageBox.warning(self, "Preview Error", f"เกิดข้อผิดพลาดในการสร้าง Preview:\n{e}")
 
-        # สร้าง JSON (รวม path รูปพรีวิว)
+        # ✅ เก็บ path แบบ relative
+        rel_template = os.path.relpath(filename, start=base_dir)
+        rel_preview = os.path.relpath(preview_path, start=base_dir)
+
         meta = {
-            "template_path": filename,
-            "image_path": preview_path,
+            "template_path": rel_template,
+            "image_path": rel_preview,
             "grids": data
         }
+
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2, ensure_ascii=False)
 
-        self.status.showMessage(f"บันทึก {os.path.basename(filename)} สำเร็จ", 5000)
         QMessageBox.information(
             self, "บันทึกแล้ว ✅",
-            f"Template ถูกบันทึกพร้อมภาพพรีวิว!\n\n"
-            f"📄 {os.path.basename(filename)}\n"
-            f"🖼️ {os.path.basename(preview_path)}"
+            f"Template ถูกบันทึกแบบ relative path เรียบร้อย!\n\n"
+            f"📄 {rel_template}\n"
+            f"🖼️ {rel_preview}\n\n"
+            f"ย้ายโฟลเดอร์ได้โดยไม่ต้องแก้ path อีกต่อไป ✅"
         )
 
     def back_to_main(self):
