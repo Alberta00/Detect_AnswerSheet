@@ -141,59 +141,38 @@ def _digits_only(s: str) -> str:
 
 def pick_student_and_subject(decoded_blocks: dict):
     """
-    เลือก StudentID / SubjectCode อย่างทนทาน:
-    1) จับชื่อบล็อกตรง ๆ ก่อน (StuID/SubID มาก่อน, จากนั้น StudentID/SubjectCode และ alias ไทย)
-    2) ใช้กฎความยาว (StudentID=8, SubjectCode=6) เพื่อแก้เคสสลับ/คลาดเคลื่อน
+    รองรับ StuID/SubID โดยตรง + alias เดิม StudentID/SubjectCode + ภาษาไทย
+    พร้อมตรวจความยาว (StuID=8, SubID=6)
     """
-    # 1) เลือกจากชื่อบล็อกที่คาดหวังตรง ๆ ก่อน
     student_id = ""
     subject_code = ""
 
-    # ตรงตัวที่สุด (StuID/SubID)
+    # ✅ ตรงชื่อก่อน (StuID/SubID)
     for k, v in decoded_blocks.items():
-        ck = _canon(k); dv = _digits_only(v)
-        if ck == "stuid" and dv: student_id = dv
-        if ck == "subid" and dv: subject_code = dv
+        ck = k.strip().lower()
+        if ck == "stuid" and v.isdigit():
+            student_id = v
+        if ck == "subid" and v.isdigit():
+            subject_code = v
 
-    # รองลงมา (StudentID/SubjectCode)
-    if not student_id or not subject_code:
-        for k, v in decoded_blocks.items():
-            ck = _canon(k); dv = _digits_only(v)
-            if not dv: continue
-            if not student_id and ck == "studentid": student_id = dv
-            if not subject_code and ck == "subjectcode": subject_code = dv
-
-    # alias กว้าง (ไทย/อังกฤษ)
+    # ✅ รองรับชื่อเดิม (StudentID/SubjectCode)
     if not student_id:
         for k, v in decoded_blocks.items():
-            ck = _canon(k); dv = _digits_only(v)
-            if not dv: continue
-            if any(a in ck for a in _STUDENT_ALIASES):
-                student_id = dv; break
+            if "studentid" in k.lower() and v.isdigit():
+                student_id = v
     if not subject_code:
         for k, v in decoded_blocks.items():
-            ck = _canon(k); dv = _digits_only(v)
-            if not dv: continue
-            if any(a in ck for a in _SUBJECT_ALIASES):
-                subject_code = dv; break
+            if "subjectcode" in k.lower() and v.isdigit():
+                subject_code = v
 
-    # 2) กฎความยาว + auto-swap
-    eight = [ _digits_only(v) for v in decoded_blocks.values() if _digits_only(v) and len(_digits_only(v))==8 ]
-    six   = [ _digits_only(v) for v in decoded_blocks.values() if _digits_only(v) and len(_digits_only(v))==6 ]
-
-    # ถ้าทั้งสองช่องได้ แต่สลับกัน → สลับ
-    if student_id and subject_code and len(student_id)==6 and len(subject_code)==8:
+    # ✅ ตรวจความยาว + auto swap
+    if len(student_id) == 6 and len(subject_code) == 8:
         student_id, subject_code = subject_code, student_id
 
-    # ถ้ายังไม่ตรง ให้พยายามดึงตามความยาว
-    if (not student_id or len(student_id)!=8) and eight:
-        student_id = eight[0]
-    if (not subject_code or len(subject_code)!=6) and six:
-        subject_code = six[0]
-
-    # สุดท้าย enforce ความยาว
-    if student_id and len(student_id)!=8: student_id = ""
-    if subject_code and len(subject_code)!=6: subject_code = ""
+    if len(student_id) != 8:
+        student_id = ""
+    if len(subject_code) != 6:
+        subject_code = ""
 
     return student_id, subject_code
 
@@ -743,21 +722,30 @@ class MainWindow(QMainWindow):
                 w.writerow(row)
 
         with open("answers.csv","w",newline="",encoding="utf-8-sig") as f2:
-            w2=csv.writer(f2); header=["ไฟล์"]+[f"Q{i}" for i in range(1, limit_q+1)]; w2.writerow(header)
-            for r in all_results:
-                ans_row=[r["file"]]+[r["answers"].get(i,"NULL") for i in range(1, limit_q+1)]
-                w2.writerow(ans_row)
+         w2 = csv.writer(f2)
+         header = ["ไฟล์"] + [f"Q{i}" for i in range(1, limit_q+1)]
+         w2.writerow(header)
 
-        # refresh subject dropdown if new title appears
-        self._reload_subject_dropdown()
-        if subject_title:
+         # เขียนคำตอบของแต่ละนักเรียน
+         for r in all_results:
+             ans_row = [r["file"]] + [r["answers"].get(i, "NULL") for i in range(1, limit_q+1)]
+         w2.writerow(ans_row)
+
+          # 🟢 เพิ่มบรรทัดสุดท้ายเป็นเฉลย (AnswerKey)
+         key_row = ["เฉลย"] + [self.answer_key.get(i, "-") for i in range(1, limit_q+1)]
+         w2.writerow(key_row)
+
+
+         # refresh subject dropdown if new title appears
+         self._reload_subject_dropdown()
+         if subject_title:
             idx = self.cmb_subject_title.findText(subject_title, Qt.MatchFixedString)
             if idx >= 0:
                 self.cmb_subject_title.setCurrentIndex(idx)
             else:
                 self.cmb_subject_title.setEditText(subject_title)
 
-        QMessageBox.information(self,"✅ เสร็จสิ้น", f"ตรวจแล้ว {len(all_results)} ไฟล์")
+         QMessageBox.information(self,"✅ เสร็จสิ้น", f"ตรวจแล้ว {len(all_results)} ไฟล์")
 
     # ---------------- Sidebar select ----------------
     def _select_run_item(self, curr, prev):
