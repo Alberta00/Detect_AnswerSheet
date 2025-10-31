@@ -1,78 +1,134 @@
-import sys
-import subprocess
-import os
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QPushButton, QLabel,
-    QVBoxLayout, QWidget, QMessageBox
-)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+# main.py — หน้าหลักของระบบ OMR
+import os, sys, subprocess
+from pathlib import Path
 
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QPushButton, QLabel,
+    QVBoxLayout, QHBoxLayout, QMessageBox
+)
+from PySide6.QtCore import Qt, QProcess, QUrl
+from PySide6.QtGui import QDesktopServices
+
+APP_DIR = Path(__file__).resolve().parent
+
+# ---- ตัวช่วยเปิดไฟล์/โฟลเดอร์อย่างปลอดภัย ----
+def open_dir(path: Path):
+    path.mkdir(parents=True, exist_ok=True)
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
 class MainMenu(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🧠 OMR System — Main Menu")
-        self.resize(500, 400)
-        self.setStyleSheet("""
-            QWidget { background-color: #f0f3f8; font-family: 'Segoe UI'; }
-            QPushButton {
-                background-color: #4a90e2; color: white;
-                border-radius: 12px; padding: 12px; font-size: 16px;
-            }
-            QPushButton:hover { background-color: #357ABD; }
-            QLabel { font-size: 18px; font-weight: bold; color: #333; }
-        """)
+        self.setWindowTitle("OMR System — Main Menu")
+        self.resize(720, 420)
 
-        layout = QVBoxLayout()
-        label = QLabel("📋 ระบบตรวจข้อสอบ OMR")
-        label.setAlignment(Qt.AlignCenter)
-        label.setFont(QFont("Segoe UI", 20, QFont.Bold))
-        layout.addWidget(label)
+        title = QLabel("OMR Answer Sheet — Main Menu")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-size: 22px; font-weight: 700; padding: 8px;")
 
-        layout.addSpacing(30)
+        # ปุ่มหลัก
+        btn_checker = QPushButton("📝 ตรวจข้อสอบ (Open Checker)")
+        btn_checker.setMinimumHeight(44)
+        btn_checker.clicked.connect(self.open_checker)
 
-        btn1 = QPushButton("🧩 สร้างกริด (OMR Designer)")
-        btn1.clicked.connect(self.open_designer)
-        layout.addWidget(btn1)
+        btn_summary = QPushButton("📊 สรุปผลคะแนน (Open Summary)")
+        btn_summary.setMinimumHeight(44)
+        btn_summary.clicked.connect(self.open_summary)
 
-        btn2 = QPushButton("✅ ตรวจข้อสอบ (OMR Checker)")
-        btn2.clicked.connect(self.open_checker)
-        layout.addWidget(btn2)
+        btn_grid = QPushButton("🧩 จัดการ Grid / Template")
+        btn_grid.setMinimumHeight(44)
+        btn_grid.clicked.connect(self.open_grid_editor)
 
-        layout.addSpacing(20)
-        footer = QLabel("KU Sriracha")
-        footer.setAlignment(Qt.AlignCenter)
-        footer.setStyleSheet("color: gray; font-size: 12px;")
-        layout.addWidget(footer)
+        btn_out = QPushButton("📂 เปิดโฟลเดอร์ผลลัพธ์ (out/)")
+        btn_out.setMinimumHeight(40)
+        btn_out.clicked.connect(lambda: open_dir(APP_DIR / "out"))
 
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
+        btn_exit = QPushButton("❌ ออกจากโปรแกรม")
+        btn_exit.setMinimumHeight(40)
+        btn_exit.clicked.connect(self.close)
 
-    # ---------- เปิดโปรแกรม Designer ----------
-    def open_designer(self):
-        try:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            file_path = os.path.join(current_dir, "Grid.py")
-            subprocess.Popen([sys.executable, file_path])
-            self.close()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"ไม่สามารถเปิด Grid.py ได้\n{e}")
+        # เค้าโครง
+        col = QVBoxLayout()
+        col.addWidget(title)
+        col.addSpacing(6)
+        col.addWidget(btn_checker)
+        col.addWidget(btn_summary)
+        col.addWidget(btn_grid)
 
-    # ---------- เปิดโปรแกรม Checker ----------
+        col.addSpacing(10)
+        row = QHBoxLayout()
+        row.addWidget(btn_out)
+        row.addWidget(btn_exit)
+        col.addLayout(row)
+
+        wrap = QWidget()
+        wrap.setLayout(col)
+        wrap.setStyleSheet("""
+    QMainWindow, QWidget { background: white; color: black; }
+    QLabel { color: #111; }
+    QTextEdit { background: #f9f9f9; color: #111; border: 1px solid #ccc; }
+    QPushButton {
+        background: #f2f2f2; color: #111; border: 1px solid #d0d0d0;
+        padding: 8px 12px; border-radius: 10px; font-weight: 600;
+    }
+    QPushButton:hover { background: #e9e9e9; }
+    QPushButton:pressed { background: #dddddd; }
+""")
+        self.setCentralWidget(wrap)
+
+        # กัน GC: เก็บรีเฟอเรนซ์หน้าลูก
+        self._child_windows = []
+
+    # ---------- เปิดหน้าตรวจ ----------
     def open_checker(self):
+        """
+        พยายาม import Detect.MainWindow ถ้าไม่สำเร็จให้รัน Detect.py เป็นโปรเซสใหม่
+        """
         try:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            file_path = os.path.join(current_dir, "Detect.py")
-            subprocess.Popen([sys.executable, file_path])
-            self.close()
+            import Detect  # ต้องอยู่โฟลเดอร์เดียวกัน
+            win = Detect.MainWindow()
+            win.show()
+            self._child_windows.append(win)
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"ไม่สามารถเปิด Detect.py ได้\n{e}")
+            # fallback: เปิดไฟล์ Detect.py เป็นโปรเซสใหม่ของ Python
+            det_path = APP_DIR / "Detect.py"
+            if not det_path.exists():
+                QMessageBox.critical(self, "ไม่พบไฟล์", f"หา Detect.py ไม่เจอที่\n{det_path}")
+                return
+            QProcess.startDetached(sys.executable, [str(det_path)])
 
+    # ---------- เปิดหน้าสรุป ----------
+    def open_summary(self):
+        try:
+            import Detect
+            win = Detect.SummaryWindow()
+            win.show()
+            self._child_windows.append(win)
+        except Exception as e:
+            det_path = APP_DIR / "Detect.py"
+            if not det_path.exists():
+                QMessageBox.critical(self, "ไม่พบไฟล์", f"หา Detect.py ไม่เจอที่\n{det_path}")
+                return
+            # ให้ Detect.py เปิด Summary เองไม่ได้ จึงรัน Detect แล้วผู้ใช้กดเปิดสรุปจากในแอพได้
+            QProcess.startDetached(sys.executable, [str(det_path)])
 
-if __name__ == "__main__":
+    # ---------- เปิด Grid/Template Editor ----------
+    def open_grid_editor(self):
+        """
+        เพื่อเลี่ยงการพึ่งพาคลาส/ชื่อคลาสใน Grid.py (ซึ่งอาจต่างจากที่เราคาด)
+        ใช้วิธีเปิด Grid.py เป็นโปรเซส Python แยก
+        """
+        grid_path = APP_DIR / "Grid.py"
+        if not grid_path.exists():
+            QMessageBox.critical(self, "ไม่พบไฟล์", f"หา Grid.py ไม่เจอที่\n{grid_path}")
+            return
+        QProcess.startDetached(sys.executable, [str(grid_path)])
+
+def main():
     app = QApplication(sys.argv)
     w = MainMenu()
     w.show()
     sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
